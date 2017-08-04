@@ -1,3 +1,4 @@
+import { Options } from 'chrome-launcher'
 export interface Client {
   Network: any
   Page: any
@@ -49,6 +50,7 @@ export interface ChromelessOptions {
   launchChrome?: boolean // auto-launch chrome (local) `true`
   cdp?: CDPOptions
   remote?: RemoteOptions | boolean
+  launch?: Options
 }
 
 export interface Chrome {

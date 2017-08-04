@@ -37,7 +37,8 @@ export default class LocalChrome implements Chrome {
   private async startChrome(): Promise<Client> {
     this.chromeInstance = await launch({
       logLevel: this.options.debug ? 'info' : 'silent',
-      port: this.options.cdp.port
+      port: this.options.cdp.port,
+      ...this.options.launch
     })
     return await CDP({ port: this.chromeInstance.port })
   }
