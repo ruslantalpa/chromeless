@@ -1,8 +1,17 @@
 import ChromeLocal from './chrome/local'
 import ChromeRemote from './chrome/remote'
 import Queue from './queue'
-import { ChromelessOptions, Cookie, CookieQuery, PdfOptions, DeviceMetrics } from './types'
+import {
+  ChromelessOptions,
+  Headers,
+  Cookie,
+  CookieQuery,
+  PdfOptions,
+  DeviceMetrics,
+  ScreenshotOptions,
+} from './types'
 import { getDebugOption } from './util'
+import { isArray } from 'util'
 
 export default class Chromeless<T extends any> implements Promise<T> {
   private queue: Queue
@@ -20,6 +29,7 @@ export default class Chromeless<T extends any> implements Promise<T> {
       waitTimeout: 10000,
       remote: false,
       implicitWait: true,
+      scrollBeforeClick: false,
       launchChrome: true,
 
       ...options,
@@ -86,7 +96,7 @@ export default class Chromeless<T extends any> implements Promise<T> {
   }
 
   wait(timeout: number): Chromeless<T>
-  wait(selector: string): Chromeless<T>
+  wait(selector: string, timeout?: number): Chromeless<T>
   wait(fn: (...args: any[]) => boolean, ...args: any[]): Chromeless<T>
   wait(firstArg, ...args: any[]): Chromeless<T> {
     switch (typeof firstArg) {
@@ -95,7 +105,11 @@ export default class Chromeless<T extends any> implements Promise<T> {
         break
       }
       case 'string': {
-        this.queue.enqueue({ type: 'wait', selector: firstArg })
+        this.queue.enqueue({
+          type: 'wait',
+          selector: firstArg,
+          timeout: args[0],
+        })
         break
       }
       case 'function': {
@@ -105,6 +119,18 @@ export default class Chromeless<T extends any> implements Promise<T> {
       default:
         throw new Error(`Invalid wait arguments: ${firstArg} ${args}`)
     }
+
+    return this
+  }
+
+  clearCache(): Chromeless<T> {
+    this.queue.enqueue({ type: 'clearCache' })
+
+    return this
+  }
+
+  clearStorage(origin: string, storageTypes: string): Chromeless<T> {
+    this.queue.enqueue({ type: 'clearStorage', origin, storageTypes })
 
     return this
   }
@@ -158,6 +184,12 @@ export default class Chromeless<T extends any> implements Promise<T> {
     return this
   }
 
+  scrollToElement(selector: string): Chromeless<T> {
+    this.queue.enqueue({ type: 'scrollToElement', selector })
+
+    return this
+  }
+
   setViewport(options: DeviceMetrics): Chromeless<T> {
     this.queue.enqueue({ type: 'setViewport', options })
 
@@ -166,6 +198,12 @@ export default class Chromeless<T extends any> implements Promise<T> {
 
   setHtml(html: string): Chromeless<T> {
     this.queue.enqueue({ type: 'setHtml', html })
+
+    return this
+  }
+
+  setExtraHTTPHeaders(headers: Headers): Chromeless<T> {
+    this.queue.enqueue({ type: 'setExtraHTTPHeaders', headers })
 
     return this
   }
@@ -201,9 +239,18 @@ export default class Chromeless<T extends any> implements Promise<T> {
     return new Chromeless<boolean>({}, this)
   }
 
-  screenshot(): Chromeless<string> {
+  screenshot(
+    selector?: string,
+    options?: ScreenshotOptions,
+  ): Chromeless<string> {
+    if (typeof selector === 'object') {
+      options = selector
+      selector = undefined
+    }
     this.lastReturnPromise = this.queue.process<string>({
       type: 'returnScreenshot',
+      selector,
+      options,
     })
 
     return new Chromeless<string>({}, this)
@@ -211,6 +258,14 @@ export default class Chromeless<T extends any> implements Promise<T> {
 
   html(): Chromeless<string> {
     this.lastReturnPromise = this.queue.process<string>({ type: 'returnHtml' })
+
+    return new Chromeless<string>({}, this)
+  }
+
+  htmlUrl(): Chromeless<string> {
+    this.lastReturnPromise = this.queue.process<string>({
+      type: 'returnHtmlUrl',
+    })
 
     return new Chromeless<string>({}, this)
   }
@@ -227,45 +282,45 @@ export default class Chromeless<T extends any> implements Promise<T> {
   /**
    * Get the cookies for the current url
    */
-  cookiesGet(): Chromeless<Cookie[] | null>
+  cookies(): Chromeless<Cookie[] | null>
   /**
    * Get a specific cookie for the current url
    * @param name
    */
-  cookiesGet(name: string): Chromeless<Cookie | null>
+  cookies(name: string): Chromeless<Cookie | null>
   /**
    * Get a specific cookie by query. Not implemented yet
    * @param query
    */
-  cookiesGet(query: CookieQuery): Chromeless<Cookie[] | null>
-  cookiesGet(
+  cookies(query: CookieQuery): Chromeless<Cookie[] | null>
+  cookies(
     nameOrQuery?: string | CookieQuery,
   ): Chromeless<Cookie | Cookie[] | null> {
-    if (typeof nameOrQuery !== 'undefined') {
+    if (typeof nameOrQuery !== 'undefined' && typeof nameOrQuery !== 'string') {
       throw new Error('Querying cookies is not implemented yet')
     }
 
     this.lastReturnPromise = this.queue.process<Cookie[] | Cookie | null>({
-      type: 'cookiesGet',
+      type: 'cookies',
       nameOrQuery,
     })
 
     return new Chromeless<Cookie | Cookie[] | null>({}, this)
   }
 
-  cookiesGetAll(): Chromeless<Cookie[]> {
+  allCookies(): Chromeless<Cookie[]> {
     this.lastReturnPromise = this.queue.process<Cookie[]>({
-      type: 'cookiesGetAll',
+      type: 'allCookies',
     })
 
     return new Chromeless<Cookie[]>({}, this)
   }
 
-  cookiesSet(name: string, value: string): Chromeless<T>
-  cookiesSet(cookie: Cookie): Chromeless<T>
-  cookiesSet(cookies: Cookie[]): Chromeless<T>
-  cookiesSet(nameOrCookies, value?: string): Chromeless<T> {
-    this.queue.enqueue({ type: 'cookiesSet', nameOrCookies, value })
+  setCookies(name: string, value: string): Chromeless<T>
+  setCookies(cookie: Cookie): Chromeless<T>
+  setCookies(cookies: Cookie[]): Chromeless<T>
+  setCookies(nameOrCookies, value?: string): Chromeless<T> {
+    this.queue.enqueue({ type: 'setCookies', nameOrCookies, value })
 
     return this
   }
@@ -277,19 +332,29 @@ export default class Chromeless<T extends any> implements Promise<T> {
     if (typeof url === 'undefined') {
       throw new Error('Cookie url should be defined.')
     }
-    this.queue.enqueue({type: 'deleteCookies', name, url})
+    this.queue.enqueue({ type: 'deleteCookies', name, url })
 
     return this
   }
 
   clearCookies(): Chromeless<T> {
-    this.queue.enqueue({type: 'clearCookies'})
+    this.queue.enqueue({ type: 'clearCookies' })
 
     return this
   }
 
-    clearInput(selector: string): Chromeless<T> {
-    this.queue.enqueue({type: 'clearInput', selector})
+  clearInput(selector: string): Chromeless<T> {
+    this.queue.enqueue({ type: 'clearInput', selector })
+    return this
+  }
+
+  setFileInput(selector: string, files: string): Chromeless<T>
+  setFileInput(selector: string, files: string[]): Chromeless<T>
+  setFileInput(selector: string, files: string | string[]): Chromeless<T> {
+    if (!isArray(files)) {
+      files = [files]
+    }
+    this.queue.enqueue({ type: 'setFileInput', selector, files })
     return this
   }
 

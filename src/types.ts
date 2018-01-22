@@ -6,10 +6,13 @@ export interface Client {
   Input: any
   Runtime: any
   Emulation: any
+  Storage: any
   close: () => void
   target: {
     id: string
   }
+  port: any
+  host: any
 }
 
 export interface DeviceMetrics {
@@ -42,6 +45,7 @@ export interface ChromelessOptions {
   debug?: boolean // false
   waitTimeout?: number // 10000ms
   implicitWait?: boolean // false
+  scrollBeforeClick?: boolean // false
   viewport?: {
     width?: number // 1440 if headless
     height?: number // 900 if headless
@@ -62,6 +66,9 @@ export type Command =
   | {
       type: 'goto'
       url: string
+    }
+  | {
+      type: 'clearCache'
     }
   | {
       type: 'setViewport'
@@ -101,9 +108,14 @@ export type Command =
     }
   | {
       type: 'returnScreenshot'
+      selector?: string
+      options?: ScreenshotOptions
     }
   | {
       type: 'returnHtml'
+    }
+  | {
+      type: 'returnHtmlUrl'
     }
   | {
       type: 'returnPdf'
@@ -115,8 +127,16 @@ export type Command =
       y: number
     }
   | {
+      type: 'scrollToElement'
+      selector: string
+    }
+  | {
       type: 'setHtml'
       html: string
+    }
+  | {
+      type: 'setExtraHTTPHeaders'
+      headers: Headers
     }
   | {
       type: 'press'
@@ -133,20 +153,25 @@ export type Command =
       type: 'clearCookies'
     }
   | {
+      type: 'clearStorage'
+      origin: string
+      storageTypes: string
+    }
+  | {
       type: 'deleteCookies'
       name: string
       url: string
     }
   | {
-      type: 'cookiesSet'
+      type: 'setCookies'
       nameOrCookies: string | Cookie | Cookie[]
       value?: string
     }
   | {
-      type: 'cookiesGetAll'
+      type: 'allCookies'
     }
   | {
-      type: 'cookiesGet'
+      type: 'cookies'
       nameOrQuery?: string | CookieQuery
     }
   | {
@@ -162,9 +187,16 @@ export type Command =
       selector: string
     }
   | {
-    type: 'clearInput'
-    selector: string
-  }
+      type: 'clearInput'
+      selector: string
+    }
+  | {
+      type: 'setFileInput'
+      selector: string
+      files: string[]
+    }
+
+export type Headers = Record<string, string>
 
 export interface Cookie {
   url?: string
@@ -203,4 +235,35 @@ export interface PdfOptions {
   marginRight?: number
   pageRanges?: string
   ignoreInvalidPageRanges?: boolean
+  filePath?: string // for internal use
+}
+
+export interface ScreenshotOptions {
+  filePath?: string
+}
+
+export type Quad = Array<number>
+
+export interface ShapeOutsideInfo {
+  bounds: Quad
+  shape: Array<any>
+  marginShape: Array<any>
+}
+
+export interface BoxModel {
+  content: Quad
+  padding: Quad
+  border: Quad
+  margin: Quad
+  width: number
+  height: number
+  shapeOutside: ShapeOutsideInfo
+}
+
+export interface Viewport {
+  x: number
+  y: number
+  width: number
+  height: number
+  scale: number
 }

@@ -1,14 +1,13 @@
-import * as AWS from 'aws-sdk'
 import {
   Client,
   Command,
   ChromelessOptions,
+  Headers,
   Cookie,
   CookieQuery,
   PdfOptions,
+  ScreenshotOptions,
 } from '../types'
-import * as cuid from 'cuid'
-import * as fs from 'fs'
 import {
   nodeExists,
   wait,
@@ -17,11 +16,14 @@ import {
   evaluate,
   screenshot,
   html,
+  htmlUrl,
   pdf,
   type,
   getValue,
   scrollTo,
+  scrollToElement,
   setHtml,
+  setExtraHTTPHeaders,
   press,
   setViewport,
   clearCookies,
@@ -34,6 +36,10 @@ import {
   mouseup,
   focus,
   clearInput,
+  setFileInput,
+  writeToFile,
+  isS3Configured,
+  uploadToS3,
 } from '../util'
 
 export default class LocalRuntime {
@@ -50,17 +56,21 @@ export default class LocalRuntime {
     switch (command.type) {
       case 'goto':
         return this.goto(command.url)
-        case 'setViewport':
-          return setViewport(this.client, command.options)
+      case 'setViewport':
+        return setViewport(this.client, command.options)
       case 'wait': {
-        if (command.timeout) {
+        if (command.selector) {
+          return this.waitSelector(command.selector, command.timeout)
+        } else if (command.timeout) {
           return this.waitTimeout(command.timeout)
-        } else if (command.selector) {
-          return this.waitSelector(command.selector)
         } else {
           throw new Error('waitFn not yet implemented')
         }
       }
+      case 'clearCache':
+        return this.clearCache()
+      case 'clearStorage':
+        return this.clearStorage(command.origin, command.storageTypes)
       case 'setUserAgent':
         return this.setUserAgent(command.useragent)
       case 'click':
@@ -70,9 +80,11 @@ export default class LocalRuntime {
       case 'returnExists':
         return this.returnExists(command.selector)
       case 'returnScreenshot':
-        return this.returnScreenshot()
+        return this.returnScreenshot(command.selector, command.options)
       case 'returnHtml':
         return this.returnHtml()
+      case 'returnHtmlUrl':
+        return this.returnHtmlUrl()
       case 'returnPdf':
         return this.returnPdf(command.options)
       case 'returnInputValue':
@@ -83,26 +95,32 @@ export default class LocalRuntime {
         return this.press(command.keyCode, command.count, command.modifiers)
       case 'scrollTo':
         return this.scrollTo(command.x, command.y)
+      case 'scrollToElement':
+        return this.scrollToElement(command.selector)
       case 'deleteCookies':
         return this.deleteCookies(command.name, command.url)
       case 'clearCookies':
         return this.clearCookies()
       case 'setHtml':
         return this.setHtml(command.html)
-      case 'cookiesGet':
-        return this.cookiesGet(command.nameOrQuery)
-      case 'cookiesGetAll':
-        return this.cookiesGetAll()
-      case 'cookiesSet':
-        return this.cookiesSet(command.nameOrCookies, command.value)
+      case 'setExtraHTTPHeaders':
+        return this.setExtraHTTPHeaders(command.headers)
+      case 'cookies':
+        return this.cookies(command.nameOrQuery)
+      case 'allCookies':
+        return this.allCookies()
+      case 'setCookies':
+        return this.setCookies(command.nameOrCookies, command.value)
       case 'mousedown':
         return this.mousedown(command.selector)
       case 'mouseup':
-        return this.mousup(command.selector)
+        return this.mouseup(command.selector)
       case 'focus':
         return this.focus(command.selector)
       case 'clearInput':
         return this.clearInput(command.selector)
+      case 'setFileInput':
+        return this.setFileInput(command.selector, command.files)
       default:
         throw new Error(`No such command: ${JSON.stringify(command)}`)
     }
@@ -118,6 +136,31 @@ export default class LocalRuntime {
     this.log(`Navigated to ${url}`)
   }
 
+  private async clearCache(): Promise<void> {
+    const { Network } = this.client
+    const canClearCache = await Network.canClearBrowserCache
+    if (canClearCache) {
+      await Network.clearBrowserCache()
+      this.log(`Cache is cleared`)
+    } else {
+      this.log(`Cache could not be cleared`)
+    }
+  }
+
+  private async clearStorage(
+    origin: string,
+    storageTypes: string,
+  ): Promise<void> {
+    const { Storage, Network } = this.client
+    const canClearCache = await Network.canClearBrowserCache
+    if (canClearCache) {
+      await Storage.clearDataForOrigin({ origin, storageTypes })
+      this.log(`${storageTypes} for ${origin} is cleared`)
+    } else {
+      this.log(`${storageTypes} could not be cleared`)
+    }
+  }
+
   private async setUserAgent(useragent: string): Promise<void> {
     this.userAgentValue = useragent
     await this.log(`Set useragent to ${this.userAgentValue}`)
@@ -128,9 +171,12 @@ export default class LocalRuntime {
     await wait(timeout)
   }
 
-  private async waitSelector(selector: string): Promise<void> {
-    this.log(`Waiting for ${selector}`)
-    await waitForNode(this.client, selector, this.chromelessOptions.waitTimeout)
+  private async waitSelector(
+    selector: string,
+    waitTimeout: number = this.chromelessOptions.waitTimeout,
+  ): Promise<void> {
+    this.log(`Waiting for ${selector} ${waitTimeout}`)
+    await waitForNode(this.client, selector, waitTimeout)
     this.log(`Waited for ${selector}`)
   }
 
@@ -150,6 +196,9 @@ export default class LocalRuntime {
     }
 
     const { scale } = this.chromelessOptions.viewport
+    if (this.chromelessOptions.scrollBeforeClick) {
+      await scrollToElement(this.client, selector)
+    }
     await click(this.client, selector, scale)
     this.log(`Clicked on ${selector}`)
   }
@@ -160,6 +209,18 @@ export default class LocalRuntime {
 
   private async scrollTo<T>(x: number, y: number): Promise<void> {
     return scrollTo(this.client, x, y)
+  }
+
+  private async scrollToElement<T>(selector: string): Promise<void> {
+    if (this.chromelessOptions.implicitWait) {
+      this.log(`scrollToElement(): Waiting for ${selector}`)
+      await waitForNode(
+        this.client,
+        selector,
+        this.chromelessOptions.waitTimeout,
+      )
+    }
+    return scrollToElement(this.client, selector)
   }
 
   private async mousedown(selector: string): Promise<void> {
@@ -184,7 +245,7 @@ export default class LocalRuntime {
     this.log(`Mousedown on ${selector}`)
   }
 
-  private async mousup(selector: string): Promise<void> {
+  private async mouseup(selector: string): Promise<void> {
     if (this.chromelessOptions.implicitWait) {
       this.log(`mouseup(): Waiting for ${selector}`)
       await waitForNode(
@@ -247,15 +308,19 @@ export default class LocalRuntime {
     this.log(`Typed ${text} in ${selector}`)
   }
 
-  async cookiesGet(nameOrQuery?: string | CookieQuery): Promise<Cookie[]> {
+  async cookies(nameOrQuery?: string | CookieQuery): Promise<Cookie[]> {
     return await getCookies(this.client, nameOrQuery as string | undefined)
   }
 
-  async cookiesGetAll(): Promise<Cookie[]> {
+  async allCookies(): Promise<Cookie[]> {
     return await getAllCookies(this.client)
   }
 
-  async cookiesSet(
+  async setExtraHTTPHeaders(headers: Headers): Promise<void> {
+    return await setExtraHTTPHeaders(this.client, headers)
+  }
+
+  async setCookies(
     nameOrCookies: string | Cookie | Cookie[],
     value?: string,
   ): Promise<void> {
@@ -277,7 +342,7 @@ export default class LocalRuntime {
       return await setCookies(this.client, [cookie])
     }
 
-    throw new Error(`cookiesSet(): Invalid input ${nameOrCookies}, ${value}`)
+    throw new Error(`setCookies(): Invalid input ${nameOrCookies}, ${value}`)
   }
 
   async deleteCookies(name: string, url: string): Promise<void> {
@@ -320,33 +385,34 @@ export default class LocalRuntime {
   }
 
   // Returns the S3 url or local file path
-  async returnScreenshot(): Promise<string> {
-    const data = await screenshot(this.client)
+  async returnScreenshot(
+    selector?: string,
+    options?: ScreenshotOptions,
+  ): Promise<string> {
+    if (selector) {
+      if (this.chromelessOptions.implicitWait) {
+        this.log(`screenshot(): Waiting for ${selector}`)
+        await waitForNode(
+          this.client,
+          selector,
+          this.chromelessOptions.waitTimeout,
+        )
+      }
 
-    // check if S3 configured
-    if (
-      process.env['CHROMELESS_S3_BUCKET_NAME'] &&
-      process.env['CHROMELESS_S3_BUCKET_URL']
-    ) {
-      const s3Path = `${cuid()}.png`
-      const s3 = new AWS.S3()
-      await s3
-        .putObject({
-          Bucket: process.env['CHROMELESS_S3_BUCKET_NAME'],
-          Key: s3Path,
-          ContentType: 'image/png',
-          ACL: 'public-read',
-          Body: new Buffer(data, 'base64'),
-        })
-        .promise()
+      const exists = await nodeExists(this.client, selector)
+      if (!exists) {
+        throw new Error(
+          `screenshot(): node for selector ${selector} doesn't exist`,
+        )
+      }
+    }
 
-      return `https://${process.env['CHROMELESS_S3_BUCKET_URL']}/${s3Path}`
+    const data = await screenshot(this.client, selector)
+
+    if (isS3Configured()) {
+      return await uploadToS3(data, 'image/png')
     } else {
-      // write to `/tmp` instead
-      const filePath = `/tmp/${cuid()}.png`
-      fs.writeFileSync(filePath, Buffer.from(data, 'base64'))
-
-      return filePath
+      return writeToFile(data, 'png', options && options.filePath)
     }
   }
 
@@ -354,34 +420,25 @@ export default class LocalRuntime {
     return await html(this.client)
   }
 
+  async returnHtmlUrl(options?: { filePath?: string }): Promise<string> {
+    const data = await html(this.client)
+
+    if (isS3Configured()) {
+      return await uploadToS3(data, 'text/html')
+    } else {
+      return writeToFile(data, 'html', options && options.filePath)
+    }
+  }
+
   // Returns the S3 url or local file path
   async returnPdf(options?: PdfOptions): Promise<string> {
-    const data = await pdf(this.client, options)
+    const { filePath, ...cdpOptions } = options || { filePath: undefined }
+    const data = await pdf(this.client, cdpOptions)
 
-    // check if S3 configured
-    if (
-      process.env['CHROMELESS_S3_BUCKET_NAME'] &&
-      process.env['CHROMELESS_S3_BUCKET_URL']
-    ) {
-      const s3Path = `${cuid()}.pdf`
-      const s3 = new AWS.S3()
-      await s3
-        .putObject({
-          Bucket: process.env['CHROMELESS_S3_BUCKET_NAME'],
-          Key: s3Path,
-          ContentType: 'application/pdf',
-          ACL: 'public-read',
-          Body: new Buffer(data, 'base64'),
-        })
-        .promise()
-
-      return `https://${process.env['CHROMELESS_S3_BUCKET_URL']}/${s3Path}`
+    if (isS3Configured()) {
+      return await uploadToS3(data, 'application/pdf')
     } else {
-      // write to `/tmp` instead
-      const filePath = `/tmp/${cuid()}.pdf`
-      fs.writeFileSync(filePath, Buffer.from(data, 'base64'))
-
-      return filePath
+      return writeToFile(data, 'pdf', filePath)
     }
   }
 
@@ -389,16 +446,43 @@ export default class LocalRuntime {
     if (selector) {
       if (this.chromelessOptions.implicitWait) {
         this.log(`clearInput(): Waiting for ${selector}`)
-        await waitForNode(this.client, selector, this.chromelessOptions.waitTimeout)
+        await waitForNode(
+          this.client,
+          selector,
+          this.chromelessOptions.waitTimeout,
+        )
       }
 
       const exists = await nodeExists(this.client, selector)
       if (!exists) {
-        throw new Error(`clearInput(): Node not found for selector: ${selector}`)
+        throw new Error(
+          `clearInput(): Node not found for selector: ${selector}`,
+        )
       }
     }
     await clearInput(this.client, selector)
     this.log(`${selector} cleared`)
+  }
+
+  async setFileInput(selector: string, files: string[]): Promise<void> {
+    if (this.chromelessOptions.implicitWait) {
+      this.log(`setFileInput(): Waiting for ${selector}`)
+      await waitForNode(
+        this.client,
+        selector,
+        this.chromelessOptions.waitTimeout,
+      )
+    }
+
+    const exists = await nodeExists(this.client, selector)
+    if (!exists) {
+      throw new Error(
+        `setFileInput(): node for selector ${selector} doesn't exist`,
+      )
+    }
+
+    await setFileInput(this.client, selector, files)
+    this.log(`setFileInput() files ${files}`)
   }
 
   private log(msg: string): void {

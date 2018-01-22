@@ -7,6 +7,7 @@ A [Serverless](https://serverless.com/) AWS Lambda service for running and inter
 1. [Setup](#setup)
 1. [Using the Proxy](#using-the-proxy)
 
+
 ## Setup
 
 Clone this repository and enter the `serverless` directory:
@@ -50,6 +51,11 @@ provider:
 
 ...
 ```
+
+**Note:** The AWS Lambda function, API Gateway and IoT must all be in the _same_ region.
+
+**Note:** Deploying from Windows is currently not supported. See [#70](https://github.com/graphcool/chromeless/issues/70#issuecomment-318634457)
+
 
 ### Credentials
 
@@ -120,8 +126,8 @@ const chromeless = new Chromeless({
 ```js
 const chromeless = new Chromeless({
   remote: {
-    endpointUrl: 'https://XXXXXXXXXX.execute-api.eu-west-1.amazonaws.com/dev'
-    apiKey: 'your-api-key-here'
+    endpointUrl: 'https://XXXXXXXXXX.execute-api.eu-west-1.amazonaws.com/dev',
+    apiKey: 'your-api-key-here',
   },
 })
 ```

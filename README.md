@@ -1,4 +1,12 @@
-# Chromeless [![npm version](https://badge.fury.io/js/chromeless.svg)](https://badge.fury.io/js/chromeless) [![CircleCI](https://circleci.com/gh/graphcool/chromeless.svg?style=svg)](https://circleci.com/gh/graphcool/chromeless)
+# Chromeless
+
+[![npm](https://img.shields.io/npm/v/chromeless.svg)](https://npmjs.com/package/chromeless)
+[![downloads](https://img.shields.io/npm/dm/chromeless.svg)](https://npmjs.com/package/chromeless)
+[![circleci](https://circleci.com/gh/graphcool/chromeless.svg?style=shield)](https://circleci.com/gh/graphcool/workflows/chromeless/tree/master)
+[![codecov](https://codecov.io/gh/graphcool/chromeless/branch/master/graph/badge.svg)](https://codecov.io/gh/graphcool/chromeless)
+[![dependencies](https://david-dm.org/graphcool/chromeless/status.svg)](https://david-dm.org/graphcool/chromeless)
+[![node](https://img.shields.io/node/v/chromeless.svg)]()
+[![semantic-release](https://img.shields.io/badge/%20%20%F0%9F%93%A6%F0%9F%9A%80-semantic--release-e10079.svg)](https://github.com/semantic-release/semantic-release)
 
 Chrome automation made simple. Runs locally or headless on AWS Lambda. (**[See Demo](https://chromeless.netlify.com/)**)
 
@@ -125,13 +133,16 @@ Alternatively you can configure the Proxy service's endpoint with environment va
 ```js
 const chromeless = new Chromeless({
   remote: {
-    endpointUrl: 'https://XXXXXXXXXX.execute-api.eu-west-1.amazonaws.com/dev'
-    apiKey: 'your-api-key-here'
+    endpointUrl: 'https://XXXXXXXXXX.execute-api.eu-west-1.amazonaws.com/dev',
+    apiKey: 'your-api-key-here',
   },
 })
 ```
 
 ## API Documentation
+
+**Chromeless constructor options**
+- [`new Chromeless(options: ChromelessOptions)`](docs/api.md#chromeless-constructor-options)
 
 **Chromeless methods**
 - [`end()`](docs/api.md#api-end)
@@ -143,6 +154,8 @@ const chromeless = new Chromeless({
 - [`wait(timeout: number)`](docs/api.md#api-wait-timeout)
 - [`wait(selector: string)`](docs/api.md#api-wait-selector)
 - [`wait(fn: (...args: any[]) => boolean, ...args: any[])`] - Not implemented yet
+- [`clearCache()`](docs/api.md#api-clearcache)
+- [`clearStorage(origin: string, storageTypes: string)`](docs/api.md#api-clearstorage)
 - [`focus(selector: string)`](docs/api.md#api-focus)
 - [`press(keyCode: number, count?: number, modifiers?: any)`](docs/api.md#api-press)
 - [`type(input: string, selector?: string)`](docs/api.md#api-type)
@@ -152,24 +165,27 @@ const chromeless = new Chromeless({
 - [`mousedown(selector: string)`](docs/api.md#api-mousedown)
 - [`mouseup(selector: string)`](docs/api.md#api-mouseup)
 - [`scrollTo(x: number, y: number)`](docs/api.md#api-scrollto)
+- [`scrollToElement(selector: string)`](docs/api.md#api-scrolltoelement)
 - [`setHtml(html: string)`](docs/api.md#api-sethtml)
+- [`setExtraHTTPHeaders(headers: Headers)`](docs/api.md#api-setextrahttpheaders)
 - [`setViewport(options: DeviceMetrics)`](docs/api.md#api-setviewport)
 - [`evaluate<U extends any>(fn: (...args: any[]) => void, ...args: any[])`](docs/api.md#api-evaluate)
 - [`inputValue(selector: string)`](docs/api.md#api-inputvalue)
 - [`exists(selector: string)`](docs/api.md#api-exists)
-- [`screenshot()`](docs/api.md#api-screenshot)
+- [`screenshot(selector: string, options: ScreenshotOptions)`](docs/api.md#api-screenshot)
 - [`pdf(options?: PdfOptions)`](docs/api.md#api-pdf)
 - [`html()`](docs/api.md#api-html)
-- [`cookiesGet()`](docs/api.md#api-cookiesget)
-- [`cookiesGet(name: string)`](docs/api.md#api-cookiesget-name)
-- [`cookiesGet(query: CookieQuery)`](docs/api.md#api-cookiesget-query) - Not implemented yet
-- [`cookiesGetAll()`](docs/api.md#api-cookiesgetall)
-- [`cookiesSet(name: string, value: string)`](docs/api.md#api-cookiesset)
-- [`cookiesSet(cookie: Cookie)`](docs/api.md#api-cookiesset-one)
-- [`cookiesSet(cookies: Cookie[])`](docs/api.md#api-cookiesset-many)
+- [`cookies()`](docs/api.md#api-cookies)
+- [`cookies(name: string)`](docs/api.md#api-cookies-name)
+- [`cookies(query: CookieQuery)`](docs/api.md#api-cookies-query) - Not implemented yet
+- [`allCookies()`](docs/api.md#api-all-cookies)
+- [`setCookies(name: string, value: string)`](docs/api.md#api-setcookies)
+- [`setCookies(cookie: Cookie)`](docs/api.md#api-setcookies-one)
+- [`setCookies(cookies: Cookie[])`](docs/api.md#api-setcookies-many)
 - [`deleteCookies(name: string)`](docs/api.md#api-deletecookies)
 - [`clearCookies()`](docs/api.md#api-clearcookies)
 - [`clearInput(selector: string)`](docs/api.md#api-clearInput)
+- [`setFileInput(selector: string, files: string | string[])`](docs/api.md#api-set-file-input)
 
 ## Configuring Development Environment
 
@@ -220,7 +236,7 @@ In case you get an error like this when running the Chromeless client:
 ...
 Error: Unable to get presigned websocket URL and connect to it.
 ```
-Make sure that you're running at least version `1.8.0` of [`serverless`](https://github.com/serverless/serverless). It is a known [issue](https://github.com/serverless/serverless/issues/2450), that the API Keys are not working in older serverless versions. With running `npm run deploy` that shouldn't happen at all, as it uses the local installed version of `serverless`.
+Make sure that you're running at least version `1.19.0` of [`serverless`](https://github.com/serverless/serverless). It is a known [issue](https://github.com/serverless/serverless/issues/2450), that the API Gateway API keys are not setup correctly in older Serverless versions. Best is to run `npm run deploy` within the project as this will use the local installed version of `serverless`.
 
 ### Resource ServerlessDeploymentBucket does not exist for stack chromeless-serverless-dev
 In case the deployment of the serverless function returns an error like this:
